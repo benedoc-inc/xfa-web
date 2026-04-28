@@ -1,0 +1,7 @@
+services:
+  xfa-web:
+    build:
+      context: ..
+      dockerfile: xfa-web/Dockerfile
+    ports:
+      - "8080:8080"

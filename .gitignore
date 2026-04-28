@@ -1,0 +1,4 @@
+xfa-web
+web/dist
+web/node_modules
+*.pdf

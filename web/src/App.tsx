@@ -11,24 +11,27 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'upload' })
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <span className="text-lg font-semibold text-gray-900">xfa-web</span>
-          <span className="text-gray-400">·</span>
-          <span className="text-sm text-gray-500">XFA PDF to interactive web form</span>
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <header className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+        <div className="max-w-5xl mx-auto flex items-center gap-3">
+          <span className="text-base font-semibold text-gray-900">xfa-web</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-sm text-gray-400">XFA PDF form renderer</span>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-6 py-10">
-        {screen.name === 'upload' && (
+      {screen.name === 'upload' && (
+        <main className="max-w-2xl mx-auto w-full px-6 py-10">
           <UploadScreen
             onParsed={(schema, values, pdfData, password) =>
               setScreen({ name: 'form', schema, values, pdfData, password })
             }
           />
-        )}
-        {screen.name === 'form' && (
+        </main>
+      )}
+
+      {screen.name === 'form' && (
+        <div className="max-w-5xl mx-auto w-full flex-1 flex flex-col overflow-hidden bg-white shadow-sm rounded-lg my-4 mx-4 lg:mx-auto">
           <FormRenderer
             schema={screen.schema}
             initialValues={screen.values}
@@ -36,8 +39,8 @@ export default function App() {
             password={screen.password}
             onBack={() => setScreen({ name: 'upload' })}
           />
-        )}
-      </main>
+        </div>
+      )}
     </div>
   )
 }

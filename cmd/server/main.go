@@ -12,6 +12,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/parse", handler.Parse)
 	mux.HandleFunc("/api/export", handler.Export)
+	mux.HandleFunc("/api/export-xml", handler.ExportXML)
 	mux.Handle("/", http.FileServer(http.Dir("web/dist")))
 
 	port := os.Getenv("PORT")

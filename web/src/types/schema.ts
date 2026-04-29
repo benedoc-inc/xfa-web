@@ -51,6 +51,7 @@ export type ResponseType =
   | 'signature'
   | 'display'
   | 'image'
+  | 'file'
   | 'unknown'
 
 export interface Option {

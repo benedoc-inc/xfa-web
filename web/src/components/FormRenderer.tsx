@@ -1,9 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
-import type { FormSchema, Question } from '../types/schema'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FormSchema } from '../types/schema'
 import { applyRules } from '../engine/rules'
 import type { FormValues } from '../engine/rules'
-import { exportForm } from '../api/client'
-import { FieldRenderer } from './fields'
+import { exportForm, exportXML, importXML } from '../api/client'
+import { buildSectionIndex, questionsForSection } from '../utils/sectionIndex'
+import type { SectionCompletion } from '../utils/sectionIndex'
+import SectionNav from './SectionNav'
+import SectionView from './SectionView'
 
 interface Props {
   schema: FormSchema
@@ -14,9 +17,32 @@ interface Props {
 }
 
 export default function FormRenderer({ schema, initialValues, pdfData, password, onBack }: Props) {
-  const [userValues, setUserValues] = useState<FormValues>(initialValues)
+  const [userValues, setUserValues] = useState<FormValues>(() => {
+    // Seed with schema defaults for any field not already in initialValues.
+    const vals = { ...initialValues }
+    for (const q of schema.questions) {
+      if (!(q.id in vals) && q.default !== undefined && q.default !== null && q.default !== '') {
+        vals[q.id] = String(q.default)
+      }
+    }
+    return vals
+  })
+  const [fileAttachments, setFileAttachments] = useState<Record<string, File>>({})
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [isExportingXML, setIsExportingXML] = useState(false)
+  const xmlImportRef = useRef<HTMLInputElement>(null)
+
+  const sectionIndex = useMemo(() => buildSectionIndex(schema), [schema])
+
+  const [activeSection, setActiveSection] = useState<string>(
+    () => sectionIndex.flatInteractiveSections[0]?.name ?? '',
+  )
+
+  const contentRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 })
+  }, [activeSection])
 
   const initialHidden = useMemo(() => {
     const m: Record<string, boolean> = {}
@@ -38,11 +64,51 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     setUserValues(prev => ({ ...prev, [id]: value }))
   }, [])
 
+  const handleFileChange = useCallback((id: string, file: File | null) => {
+    setFileAttachments(prev => {
+      const next = { ...prev }
+      if (file) next[id] = file
+      else delete next[id]
+      return next
+    })
+  }, [])
+
+  const sectionQuestions = useMemo(
+    () => questionsForSection(activeSection, schema, sectionIndex),
+    [activeSection, schema, sectionIndex],
+  )
+
+  const completion = useMemo<Record<string, SectionCompletion>>(() => {
+    const result: Record<string, SectionCompletion> = {}
+    for (const sec of sectionIndex.flatInteractiveSections) {
+      const qs = questionsForSection(sec.name, schema, sectionIndex)
+      let required = 0
+      let filled = 0
+      let visible = 0
+      for (const q of qs) {
+        if (states[q.id]?.hidden) continue
+        if (q.type === 'display' || q.type === 'image' || q.type === 'button' || q.type === 'file') continue
+        visible++
+        if (q.required) {
+          required++
+          if ((effectiveValues[q.id] ?? '').trim()) filled++
+        }
+      }
+      result[sec.name] = { filled, required, visible }
+    }
+    return result
+  }, [sectionIndex, schema, states, effectiveValues])
+
+  const flatSections = sectionIndex.flatInteractiveSections
+  const activeSectionIdx = flatSections.findIndex(s => s.name === activeSection)
+  const prevSection = flatSections[activeSectionIdx - 1]
+  const nextSection = flatSections[activeSectionIdx + 1]
+
   async function handleExport() {
     setIsExporting(true)
     setExportError(null)
     try {
-      const blob = await exportForm(pdfData, effectiveValues, password || undefined)
+      const blob = await exportForm(pdfData, effectiveValues, password || undefined, fileAttachments)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -56,113 +122,148 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     }
   }
 
-  // Group visible questions by section (falling back to page number)
-  const sections = useMemo(() => {
-    const order: string[] = []
-    const map = new Map<string, Question[]>()
-    for (const q of schema.questions) {
-      if (states[q.id]?.hidden) continue
-      const key = q.section || `Page ${q.page_number || 1}`
-      if (!map.has(key)) { map.set(key, []); order.push(key) }
-      map.get(key)!.push(q)
+  async function handleExportXML() {
+    setIsExportingXML(true)
+    try {
+      const blob = await exportXML(pdfData, effectiveValues, password || undefined)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = schema.metadata.title ? `${schema.metadata.title}.xml` : 'estar_data.xml'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'XML export failed.')
+    } finally {
+      setIsExportingXML(false)
     }
-    return order.map(k => [k, map.get(k)!] as [string, Question[]])
-  }, [schema.questions, states])
+  }
 
-  const multiSection = sections.length > 1
+  function handleImportXML(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      if (!text) return
+      const imported = importXML(text, schema)
+      setUserValues(prev => ({ ...prev, ...imported }))
+    }
+    reader.readAsText(file)
+    // Reset so the same file can be re-imported
+    e.target.value = ''
+  }
+
+  const totalRequired = Object.values(completion).reduce((s, c) => s + c.required, 0)
+  const totalFilled = Object.values(completion).reduce((s, c) => s + c.filled, 0)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            {schema.metadata.title || 'Form'}
-          </h1>
-          {schema.metadata.description && (
-            <p className="mt-1 text-sm text-gray-500">{schema.metadata.description}</p>
-          )}
-          <p className="mt-1 text-xs text-gray-400 uppercase tracking-wide">
-            {schema.metadata.form_type} · {schema.metadata.total_pages} page{schema.metadata.total_pages !== 1 ? 's' : ''} · {schema.questions.length} fields
-          </p>
-        </div>
-        <button
-          onClick={onBack}
-          className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-        >
-          ← Upload another
-        </button>
-      </div>
-
-      {sections.length === 0 && (
-        <p className="text-sm text-gray-500 py-8 text-center">
-          No visible fields. Fill in any required fields above to reveal more.
-        </p>
-      )}
-
-      {sections.map(([sectionName, questions]) => (
-        <div key={sectionName}>
-          {multiSection && (
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 pb-2 border-b border-gray-200">
-              {sectionName}
-            </h2>
-          )}
-          <div className="space-y-5">
-            {questions.map(q => {
-              const state = states[q.id] ?? { hidden: false, disabled: false, computed: false }
-              const validation = validateField(q, effectiveValues[q.id] ?? '')
-              return (
-                <div key={q.id}>
-                  <FieldRenderer
-                    question={q}
-                    value={effectiveValues[q.id] ?? ''}
-                    onChange={v => handleChange(q.id, v)}
-                    disabled={state.disabled || state.computed}
-                    errors={validation ? [validation] : []}
-                  />
-                  {state.computed && (
-                    <p className="mt-1 text-xs text-gray-400">Calculated automatically</p>
-                  )}
-                </div>
-              )
-            })}
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-start justify-between py-4 px-6 border-b border-gray-200 bg-white sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            ←
+          </button>
+          <div>
+            <h1 className="text-base font-semibold text-gray-900 leading-tight">
+              {schema.metadata.title || 'Form'}
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {schema.metadata.form_type}
+              {totalRequired > 0 && (
+                <> · <span className={totalFilled === totalRequired ? 'text-green-600' : 'text-gray-400'}>
+                  {totalFilled}/{totalRequired} required filled
+                </span></>
+              )}
+            </p>
           </div>
         </div>
-      ))}
-
-      <div className="pt-4 border-t border-gray-200 space-y-3">
-        {exportError && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-            {exportError}
-          </p>
-        )}
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="w-full bg-blue-600 text-white text-sm font-medium py-2.5 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {isExporting ? 'Generating PDF…' : 'Download Filled PDF'}
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => xmlImportRef.current?.click()}
+              className="text-xs text-gray-500 hover:text-gray-700 py-1.5 px-3 rounded-md border border-gray-200 hover:border-gray-300 transition-colors"
+            >
+              Import XML
+            </button>
+            <button
+              onClick={handleExportXML}
+              disabled={isExportingXML}
+              className="text-xs text-gray-500 hover:text-gray-700 py-1.5 px-3 rounded-md border border-gray-200 hover:border-gray-300 disabled:opacity-50 transition-colors"
+            >
+              {isExportingXML ? 'Exporting…' : 'Export XML'}
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="bg-blue-600 text-white text-sm font-medium py-1.5 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isExporting ? 'Generating…' : 'Download PDF'}
+            </button>
+          </div>
+          {exportError && (
+            <p className="text-xs text-red-600 max-w-xs text-right">{exportError}</p>
+          )}
+          <input
+            ref={xmlImportRef}
+            type="file"
+            accept=".xml,application/xml,text/xml"
+            className="hidden"
+            onChange={handleImportXML}
+          />
+        </div>
       </div>
+
+      {/* Body */}
+      {sectionIndex.flatInteractiveSections.length === 0 ? (
+        // No section tree — fall back to flat scroll
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <SectionView
+            sectionName="Form"
+            questions={schema.questions}
+            states={states}
+            values={userValues}
+            computed={computed}
+            onChange={handleChange}
+            onFileChange={handleFileChange}
+            duplicateLabels={sectionIndex.duplicateLabels}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar */}
+          <div className="w-56 flex-shrink-0 overflow-y-auto border-r border-gray-100 px-2 py-4 bg-white">
+            <SectionNav
+              sections={sectionIndex.interactiveSections}
+              active={activeSection}
+              onSelect={setActiveSection}
+              completion={completion}
+            />
+          </div>
+
+          {/* Section content */}
+          <div ref={contentRef} className="flex-1 overflow-y-auto px-8 py-6">
+            <SectionView
+              sectionName={activeSection}
+              questions={sectionQuestions}
+              states={states}
+              values={userValues}
+              computed={computed}
+              onChange={handleChange}
+              onFileChange={handleFileChange}
+              onPrev={prevSection ? () => setActiveSection(prevSection.name) : undefined}
+              onNext={nextSection ? () => setActiveSection(nextSection.name) : undefined}
+              prevLabel={prevSection?.name}
+              nextLabel={nextSection?.name}
+              duplicateLabels={sectionIndex.duplicateLabels}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
-}
-
-function validateField(q: Question, value: string): string | null {
-  if (q.required && !value.trim()) return q.validation?.error_message || 'This field is required.'
-  if (!value || !q.validation) return null
-  const v = q.validation
-  if (v.min_length !== undefined && value.length < v.min_length)
-    return `Minimum ${v.min_length} characters.`
-  if (v.max_length !== undefined && value.length > v.max_length)
-    return `Maximum ${v.max_length} characters.`
-  if (v.min_value !== undefined && parseFloat(value) < v.min_value)
-    return `Minimum value is ${v.min_value}.`
-  if (v.max_value !== undefined && parseFloat(value) > v.max_value)
-    return `Maximum value is ${v.max_value}.`
-  if (v.pattern) {
-    try {
-      if (!new RegExp(v.pattern).test(value)) return v.error_message || 'Invalid format.'
-    } catch { /* ignore bad pattern */ }
-  }
-  return null
 }

@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/xfa-web-dev ./cmd/server"
+bin = "./tmp/xfa-web-dev"
+include_ext = ["go"]
+exclude_dir = ["web"]
+delay = 500
+
+[log]
+time = false
+
+[color]
+build = "yellow"
+runner = "green"

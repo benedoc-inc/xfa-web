@@ -1,0 +1,17 @@
+# Development image: Go + air for backend hot-reload.
+# Run with: docker compose -f docker-compose.dev.yml up
+# Build context must be the parent benedoc/ directory.
+
+FROM golang:1.22-alpine
+RUN apk add --no-cache git
+RUN go install github.com/air-verse/air@v1.52.3
+
+WORKDIR /app/xfa-web
+# go.mod uses replace ../pdfer — needs pdfer/ present at build time.
+# Source is volume-mounted at runtime; this just pre-warms the module cache.
+COPY pdfer/ /app/pdfer/
+COPY xfa-web/go.mod xfa-web/go.sum* ./
+RUN go mod download
+
+EXPOSE 8080
+CMD ["air", "-c", ".air.toml"]

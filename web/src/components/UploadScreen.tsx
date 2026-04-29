@@ -6,6 +6,24 @@ interface Props {
   onParsed: (schema: FormSchema, values: Record<string, string>, pdfData: string, password: string) => void
 }
 
+function ParseSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 py-2">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 bg-gray-200 rounded" />
+        <div className="h-4 bg-gray-200 rounded w-48" />
+      </div>
+      {[72, 56, 80, 48, 64].map((w, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <div className="w-2 h-2 bg-gray-200 rounded-full flex-shrink-0" />
+          <div className="h-3 bg-gray-200 rounded" style={{ width: `${w}%` }} />
+        </div>
+      ))}
+      <p className="text-xs text-gray-400 text-center pt-2">Parsing form…</p>
+    </div>
+  )
+}
+
 export default function UploadScreen({ onParsed }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [password, setPassword] = useState('')
@@ -58,34 +76,40 @@ export default function UploadScreen({ onParsed }: Props) {
         </p>
       </div>
 
-      <div
-        className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
-          dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-        }`}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={onFileChange}
-        />
-        {file ? (
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-900">{file.name}</p>
-            <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB · click to replace</p>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            <p className="text-sm text-gray-600">Drop a PDF here or click to browse</p>
-            <p className="text-xs text-gray-400">XFA and AcroForm PDFs supported</p>
-          </div>
-        )}
-      </div>
+      {loading ? (
+        <div className="border border-gray-200 rounded-lg p-8">
+          <ParseSkeleton />
+        </div>
+      ) : (
+        <div
+          className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
+            dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+          }`}
+          onClick={() => inputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={onFileChange}
+          />
+          {file ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-900">{file.name}</p>
+              <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB · click to replace</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600">Drop a PDF here or click to browse</p>
+              <p className="text-xs text-gray-400">XFA and AcroForm PDFs supported</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="block text-sm font-medium text-gray-700">

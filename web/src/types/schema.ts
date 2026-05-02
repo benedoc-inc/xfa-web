@@ -8,6 +8,7 @@ export interface FormSchema {
 export interface FormSection {
   name: string
   path: string
+  label?: string     // human-readable label from XFA subform caption; empty when not specified
   interactive: boolean
   layout?: string    // position | tb | lr-tb | row | table
   width?: string     // subform w attribute (mm/in/pt)

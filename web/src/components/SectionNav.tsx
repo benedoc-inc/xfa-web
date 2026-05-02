@@ -19,6 +19,19 @@ function CompletionDot({ filled, required, visible }: SectionCompletion) {
   return <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
 }
 
+function hasInteractiveDescendant(sec: FormSection, completion: Record<string, SectionCompletion>): boolean {
+  if (sec.interactive) {
+    const comp = completion[sec.name]
+    if (comp && comp.visible > 0) return true
+    if (!comp) return true // unknown → include
+  }
+  return (sec.children ?? []).some(c => hasInteractiveDescendant(c, completion))
+}
+
+function sectionLabel(section: FormSection): string {
+  return section.label || formatFieldName(section.name)
+}
+
 function SectionItem({
   section,
   depth,
@@ -34,11 +47,16 @@ function SectionItem({
 }) {
   const isActive = section.name === active
   const comp = completion[section.name] ?? { filled: 0, required: 0, visible: 0 }
-  const isEmpty = comp.visible === 0
-  const interactiveChildren = (section.children ?? []).filter(
-    c => c.interactive || (c.children ?? []).some(hasInteractiveDescendant),
+  const visibleChildren = (section.children ?? []).filter(
+    c => hasInteractiveDescendant(c, completion),
   )
   const pl = depth * 12 + 8
+
+  // Hide interactive sections where all questions are hidden (visible === 0),
+  // unless it's the active section or has visible children.
+  if (section.interactive && comp.visible === 0 && !isActive && visibleChildren.length === 0) {
+    return null
+  }
 
   return (
     <>
@@ -51,26 +69,24 @@ function SectionItem({
             depth === 0 ? 'text-sm' : 'text-xs',
             isActive
               ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-500 rounded-l-none'
-              : isEmpty
-                ? 'text-gray-300 hover:bg-gray-50 hover:text-gray-400'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
           ].join(' ')}
         >
           <CompletionDot {...comp} />
-          <span className="truncate">{formatFieldName(section.name)}</span>
+          <span className="truncate">{sectionLabel(section)}</span>
         </button>
       ) : (
-        // Non-interactive section header — shown only when it has interactive children
-        interactiveChildren.length > 0 && (
+        // Non-interactive section header — shown only when it has visible interactive children
+        visibleChildren.length > 0 && (
           <div
             style={{ paddingLeft: pl }}
             className="flex items-center gap-2 py-1 pr-2 text-xs font-semibold text-gray-400 uppercase tracking-wide select-none"
           >
-            {formatFieldName(section.name)}
+            {sectionLabel(section)}
           </div>
         )
       )}
-      {interactiveChildren.map(child => (
+      {visibleChildren.map(child => (
         <SectionItem
           key={child.name}
           section={child}
@@ -82,11 +98,6 @@ function SectionItem({
       ))}
     </>
   )
-}
-
-function hasInteractiveDescendant(sec: FormSection): boolean {
-  if (sec.interactive) return true
-  return (sec.children ?? []).some(hasInteractiveDescendant)
 }
 
 export default function SectionNav({ sections, active, onSelect, completion }: Props) {

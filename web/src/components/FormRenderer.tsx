@@ -106,8 +106,13 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
 
   const flatSections = sectionIndex.flatInteractiveSections
   const activeSectionIdx = flatSections.findIndex(s => s.name === activeSection)
-  const prevSection = flatSections[activeSectionIdx - 1]
-  const nextSection = flatSections[activeSectionIdx + 1]
+  const prevSection = flatSections
+    .slice(0, activeSectionIdx)
+    .reverse()
+    .find(s => (completion[s.name]?.visible ?? 1) > 0)
+  const nextSection = flatSections
+    .slice(activeSectionIdx + 1)
+    .find(s => (completion[s.name]?.visible ?? 1) > 0)
 
   async function handleExport() {
     setIsExporting(true)
@@ -263,8 +268,8 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
               onFileChange={handleFileChange}
               onPrev={prevSection ? () => setActiveSection(prevSection.name) : undefined}
               onNext={nextSection ? () => setActiveSection(nextSection.name) : undefined}
-              prevLabel={prevSection?.name}
-              nextLabel={nextSection?.name}
+              prevLabel={prevSection ? (prevSection.label || prevSection.name) : undefined}
+              nextLabel={nextSection ? (nextSection.label || nextSection.name) : undefined}
               duplicateLabels={sectionIndex.duplicateLabels}
             />
           </div>

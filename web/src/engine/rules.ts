@@ -342,6 +342,14 @@ export function applyRules(
       computed: q.id in computed,
     }
   }
+  // Expose states for non-question targets (section names) so the renderer can
+  // propagate section-level hiding to all questions within a hidden section.
+  const questionIds = new Set(questions.map(q => q.id))
+  for (const [id, isHidden] of Object.entries(hidden)) {
+    if (!questionIds.has(id)) {
+      states[id] = { hidden: isHidden, disabled: false, computed: false }
+    }
+  }
 
   return { states, computed }
 }

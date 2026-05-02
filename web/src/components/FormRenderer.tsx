@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormSchema } from '../types/schema'
+import type { FormSchema, FormSection } from '../types/schema'
 import { applyRules } from '../engine/rules'
 import type { FormValues } from '../engine/rules'
 import { exportForm, exportXML, importXML } from '../api/client'
@@ -83,6 +83,26 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     [activeSection, schema],
   )
 
+  // Build a set of hidden question IDs, propagating section-level hiding.
+  // When a rule targets a section name (e.g. IMDRF.presence = "hidden"),
+  // all questions in that section's subtree are also hidden.
+  const hiddenQIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const q of schema.questions) {
+      if (states[q.id]?.hidden) ids.add(q.id)
+    }
+    function walkSections(sections: FormSection[] | undefined) {
+      for (const sec of sections ?? []) {
+        if (states[sec.name]?.hidden) {
+          for (const qId of sec.questions ?? []) ids.add(qId)
+        }
+        if (sec.children) walkSections(sec.children)
+      }
+    }
+    walkSections(schema.sections)
+    return ids
+  }, [states, schema.questions, schema.sections])
+
   const completion = useMemo<Record<string, SectionCompletion>>(() => {
     const result: Record<string, SectionCompletion> = {}
     for (const sec of sectionIndex.flatInteractiveSections) {
@@ -91,7 +111,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
       let filled = 0
       let visible = 0
       for (const q of qs) {
-        if (states[q.id]?.hidden) continue
+        if (hiddenQIds.has(q.id)) continue
         if (q.type === 'display' || q.type === 'image' || q.type === 'separator' || q.type === 'button' || q.type === 'file') continue
         visible++
         if (q.required) {
@@ -102,7 +122,19 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
       result[sec.name] = { filled, required, visible }
     }
     return result
-  }, [sectionIndex, schema, states, effectiveValues])
+  }, [sectionIndex, schema, hiddenQIds, effectiveValues])
+
+  // Augment states so SectionView hides questions in section-hidden subtrees.
+  const augmentedStates = useMemo(() => {
+    if (hiddenQIds.size === 0) return states
+    const aug = { ...states }
+    for (const qId of hiddenQIds) {
+      if (!aug[qId]?.hidden) {
+        aug[qId] = { ...(aug[qId] ?? { disabled: false, computed: false }), hidden: true }
+      }
+    }
+    return aug
+  }, [states, hiddenQIds])
 
   const flatSections = sectionIndex.flatInteractiveSections
   const activeSectionIdx = flatSections.findIndex(s => s.name === activeSection)
@@ -235,7 +267,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
           <SectionView
             sectionName="Form"
             questions={schema.questions}
-            states={states}
+            states={augmentedStates}
             values={userValues}
             computed={computed}
             onChange={handleChange}
@@ -261,7 +293,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
               sectionName={activeSection}
               sectionContent={sectionContent}
               questions={sectionQuestions}
-              states={states}
+              states={augmentedStates}
               values={userValues}
               computed={computed}
               onChange={handleChange}

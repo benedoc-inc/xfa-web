@@ -9,6 +9,10 @@ export interface FormSection {
   name: string
   path: string
   interactive: boolean
+  layout?: string    // position | tb | lr-tb | row | table
+  width?: string     // subform w attribute (mm/in/pt)
+  height?: string    // subform h attribute (mm/in/pt)
+  content?: string[] // static display text from non-interactive sections
   children?: FormSection[]
   questions?: string[] // question IDs in document order
 }
@@ -46,11 +50,14 @@ export type ResponseType =
   | 'select'
   | 'number'
   | 'date'
+  | 'time'
   | 'email'
+  | 'password'
   | 'button'
   | 'signature'
   | 'display'
   | 'image'
+  | 'separator'
   | 'file'
   | 'unknown'
 

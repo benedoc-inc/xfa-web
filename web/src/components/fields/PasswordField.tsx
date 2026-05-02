@@ -1,16 +1,7 @@
 import type { FieldProps } from './types'
 import { formatFieldName } from '../../utils/formatFieldName'
 
-function fracDigitsToStep(fracDigits: unknown): string {
-  const n = typeof fracDigits === 'number' ? fracDigits : -1
-  if (n === 0) return '1'
-  if (n > 0) return (1 / Math.pow(10, n)).toFixed(n)
-  return 'any'
-}
-
-export default function NumberField({ question, value, onChange, disabled, errors }: FieldProps) {
-  const v = question.validation
-  const step = fracDigitsToStep(question.properties?.['frac_digits'])
+export default function PasswordField({ question, value, onChange, disabled, errors }: FieldProps) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -21,13 +12,11 @@ export default function NumberField({ question, value, onChange, disabled, error
         <p className="text-xs text-gray-500 mb-1">{question.description}</p>
       )}
       <input
-        type="number"
+        type="password"
         value={value}
         onChange={e => onChange(e.target.value)}
         disabled={disabled}
-        min={v?.min_value}
-        max={v?.max_value}
-        step={step}
+        maxLength={question.validation?.max_length}
         className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 ${
           errors.length ? 'border-red-400' : 'border-gray-300'
         }`}

@@ -42,6 +42,16 @@ function findSection(sections: FormSection[], name: string): FormSection | undef
   return undefined
 }
 
+/**
+ * Returns static content strings for a section (from non-interactive sibling or parent sections).
+ * These are header/instruction texts that pdfer collects into FormSection.content.
+ */
+export function contentForSection(sectionName: string, schema: FormSchema): string[] {
+  const rootChildren = schema.sections?.[0]?.children ?? []
+  const sec = findSection(rootChildren, sectionName)
+  return sec?.content ?? []
+}
+
 export function buildSectionIndex(schema: FormSchema): SectionIndex {
   const rootChildren = schema.sections?.[0]?.children ?? []
 

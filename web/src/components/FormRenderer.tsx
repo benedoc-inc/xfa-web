@@ -3,7 +3,7 @@ import type { FormSchema } from '../types/schema'
 import { applyRules } from '../engine/rules'
 import type { FormValues } from '../engine/rules'
 import { exportForm, exportXML, importXML } from '../api/client'
-import { buildSectionIndex, questionsForSection } from '../utils/sectionIndex'
+import { buildSectionIndex, questionsForSection, contentForSection } from '../utils/sectionIndex'
 import type { SectionCompletion } from '../utils/sectionIndex'
 import SectionNav from './SectionNav'
 import SectionView from './SectionView'
@@ -78,6 +78,11 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     [activeSection, schema, sectionIndex],
   )
 
+  const sectionContent = useMemo(
+    () => contentForSection(activeSection, schema),
+    [activeSection, schema],
+  )
+
   const completion = useMemo<Record<string, SectionCompletion>>(() => {
     const result: Record<string, SectionCompletion> = {}
     for (const sec of sectionIndex.flatInteractiveSections) {
@@ -87,7 +92,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
       let visible = 0
       for (const q of qs) {
         if (states[q.id]?.hidden) continue
-        if (q.type === 'display' || q.type === 'image' || q.type === 'button' || q.type === 'file') continue
+        if (q.type === 'display' || q.type === 'image' || q.type === 'separator' || q.type === 'button' || q.type === 'file') continue
         visible++
         if (q.required) {
           required++
@@ -249,6 +254,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
           <div ref={contentRef} className="flex-1 overflow-y-auto px-8 py-6">
             <SectionView
               sectionName={activeSection}
+              sectionContent={sectionContent}
               questions={sectionQuestions}
               states={states}
               values={userValues}

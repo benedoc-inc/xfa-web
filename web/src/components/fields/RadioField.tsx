@@ -13,7 +13,7 @@ export default function RadioField({ question, value, onChange, disabled, errors
         {question.description && (
           <p className="text-xs text-gray-500 mb-2">{question.description}</p>
         )}
-        <div className="space-y-2">
+        <div className={question.properties?.['layout'] === 'lr-tb' ? 'flex flex-wrap gap-x-6 gap-y-2' : 'space-y-2'}>
           {options.map(opt => (
             <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
               <input

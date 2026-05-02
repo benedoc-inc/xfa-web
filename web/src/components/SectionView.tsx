@@ -7,6 +7,7 @@ const INSTRUCTION_LABEL_THRESHOLD = 300
 
 interface Props {
   sectionName: string
+  sectionContent?: string[]  // static header/instruction text for this section
   questions: Question[]
   states: Record<string, FieldState>
   values: FormValues
@@ -56,6 +57,7 @@ function validateField(q: Question, value: string): string | null {
 
 export default function SectionView({
   sectionName,
+  sectionContent,
   questions,
   states,
   values,
@@ -72,13 +74,20 @@ export default function SectionView({
 
   const visible = questions.filter(q => !(states[q.id]?.hidden))
 
-  const interactiveCount = visible.filter(q => q.type !== 'display' && q.type !== 'image' && q.type !== 'button' && q.type !== 'file').length
+  const interactiveCount = visible.filter(q => q.type !== 'display' && q.type !== 'image' && q.type !== 'separator' && q.type !== 'button' && q.type !== 'file').length
 
   return (
     <div className="flex flex-col gap-6 min-h-0">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">{formatFieldName(sectionName)}</h2>
         <p className="text-xs text-gray-400 mt-0.5">{interactiveCount} input{interactiveCount !== 1 ? 's' : ''} in this section</p>
+        {sectionContent && sectionContent.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {sectionContent.map((line, i) => (
+              <p key={i} className="text-xs text-gray-500">{line}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {visible.length === 0 && (

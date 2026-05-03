@@ -138,6 +138,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
 
   const flatSections = sectionIndex.flatInteractiveSections
   const activeSectionIdx = flatSections.findIndex(s => s.name === activeSection)
+  const activeSectionLabel = flatSections[activeSectionIdx]?.label
   const prevSection = flatSections
     .slice(0, activeSectionIdx)
     .reverse()
@@ -291,6 +292,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
           <div ref={contentRef} className="flex-1 overflow-y-auto px-8 py-6">
             <SectionView
               sectionName={activeSection}
+              sectionLabel={activeSectionLabel}
               sectionContent={sectionContent}
               questions={sectionQuestions}
               states={augmentedStates}

@@ -7,6 +7,7 @@ const INSTRUCTION_LABEL_THRESHOLD = 300
 
 interface Props {
   sectionName: string
+  sectionLabel?: string      // human-readable label; falls back to formatFieldName(sectionName)
   sectionContent?: string[]  // static header/instruction text for this section
   questions: Question[]
   states: Record<string, FieldState>
@@ -57,6 +58,7 @@ function validateField(q: Question, value: string): string | null {
 
 export default function SectionView({
   sectionName,
+  sectionLabel,
   sectionContent,
   questions,
   states,
@@ -79,7 +81,7 @@ export default function SectionView({
   return (
     <div className="flex flex-col gap-6 min-h-0">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">{formatFieldName(sectionName)}</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{sectionLabel || formatFieldName(sectionName)}</h2>
         <p className="text-xs text-gray-400 mt-0.5">{interactiveCount} input{interactiveCount !== 1 ? 's' : ''} in this section</p>
         {sectionContent && sectionContent.length > 0 && (
           <div className="mt-2 space-y-1">

@@ -3,8 +3,13 @@ import type { FormSchema, FormSection } from '../types/schema'
 import { applyRules } from '../engine/rules'
 import type { FormValues } from '../engine/rules'
 import { exportForm, exportXML, importXML } from '../api/client'
-import { buildSectionIndex, questionsForSection, contentForSection } from '../utils/sectionIndex'
-import type { SectionCompletion } from '../utils/sectionIndex'
+import {
+  buildSectionIndex,
+  buildSectionBlocks,
+  rootSectionFor,
+  questionsForSection,
+} from '../utils/sectionIndex'
+import type { SectionCompletion, SectionBlock } from '../utils/sectionIndex'
 import SectionNav from './SectionNav'
 import SectionView from './SectionView'
 
@@ -18,7 +23,6 @@ interface Props {
 
 export default function FormRenderer({ schema, initialValues, pdfData, password, onBack }: Props) {
   const [userValues, setUserValues] = useState<FormValues>(() => {
-    // Seed with schema defaults for any field not already in initialValues.
     const vals = { ...initialValues }
     for (const q of schema.questions) {
       if (!(q.id in vals) && q.default !== undefined && q.default !== null && q.default !== '') {
@@ -35,13 +39,29 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
 
   const sectionIndex = useMemo(() => buildSectionIndex(schema), [schema])
 
+  // activeSection is always a root-level section (direct child of schema root).
+  // scrollTarget is the last-clicked nav item (any depth), used for nav highlight.
   const [activeSection, setActiveSection] = useState<string>(
-    () => sectionIndex.flatInteractiveSections[0]?.name ?? '',
+    () => sectionIndex.interactiveSections[0]?.name ?? '',
+  )
+  const [scrollTarget, setScrollTarget] = useState<string>(
+    () => sectionIndex.flatInteractiveSections[0]?.name ?? sectionIndex.interactiveSections[0]?.name ?? '',
   )
 
   const contentRef = useRef<HTMLDivElement>(null)
+  // When the active root section changes, scroll to a pending anchor (from nav click)
+  // or to the top of the content area (from prev/next navigation).
+  const pendingScrollRef = useRef<string | null>(null)
   useEffect(() => {
-    contentRef.current?.scrollTo({ top: 0 })
+    const target = pendingScrollRef.current
+    pendingScrollRef.current = null
+    if (target) {
+      requestAnimationFrame(() => {
+        document.getElementById(`section-${target}`)?.scrollIntoView({ block: 'start' })
+      })
+    } else {
+      contentRef.current?.scrollTo({ top: 0 })
+    }
   }, [activeSection])
 
   const initialHidden = useMemo(() => {
@@ -73,19 +93,7 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     })
   }, [])
 
-  const sectionQuestions = useMemo(
-    () => questionsForSection(activeSection, schema, sectionIndex),
-    [activeSection, schema, sectionIndex],
-  )
-
-  const sectionContent = useMemo(
-    () => contentForSection(activeSection, schema),
-    [activeSection, schema],
-  )
-
   // Build a set of hidden question IDs, propagating section-level hiding.
-  // When a rule targets a section name (e.g. IMDRF.presence = "hidden"),
-  // all questions in that section's subtree are also hidden.
   const hiddenQIds = useMemo(() => {
     const ids = new Set<string>()
     for (const q of schema.questions) {
@@ -124,7 +132,6 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     return result
   }, [sectionIndex, schema, hiddenQIds, effectiveValues])
 
-  // Augment states so SectionView hides questions in section-hidden subtrees.
   const augmentedStates = useMemo(() => {
     if (hiddenQIds.size === 0) return states
     const aug = { ...states }
@@ -136,16 +143,63 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
     return aug
   }, [states, hiddenQIds])
 
-  const flatSections = sectionIndex.flatInteractiveSections
-  const activeSectionIdx = flatSections.findIndex(s => s.name === activeSection)
-  const activeSectionLabel = flatSections[activeSectionIdx]?.label
-  const prevSection = flatSections
-    .slice(0, activeSectionIdx)
-    .reverse()
-    .find(s => (completion[s.name]?.visible ?? 1) > 0)
-  const nextSection = flatSections
-    .slice(activeSectionIdx + 1)
-    .find(s => (completion[s.name]?.visible ?? 1) > 0)
+  // Nav click: determine root section, switch page if needed, scroll to anchor.
+  function handleNavSelect(name: string) {
+    const root = rootSectionFor(name, schema)
+    setScrollTarget(name)
+    if (root !== activeSection) {
+      // Changing root section: queue scroll target to fire after render
+      pendingScrollRef.current = (name === root) ? null : name
+      setActiveSection(root)
+    } else if (name === root) {
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      requestAnimationFrame(() => {
+        document.getElementById(`section-${name}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  }
+
+  // Build section blocks for the active root section (or flat fallback).
+  const sectionBlocks = useMemo<SectionBlock[]>(() => {
+    if (sectionIndex.flatInteractiveSections.length === 0) {
+      return [{
+        sectionName: 'Form',
+        sectionLabel: 'Form',
+        depth: 0,
+        questions: schema.questions,
+        content: [],
+      }]
+    }
+    return buildSectionBlocks(activeSection, schema)
+  }, [activeSection, schema, sectionIndex])
+
+  // Prev/Next: navigate between root-level sections, skipping ones with no visible content.
+  const rootSections = sectionIndex.interactiveSections
+  const activeRootIdx = rootSections.findIndex(s => s.name === activeSection)
+
+  function rootHasVisible(rootName: string): boolean {
+    return sectionIndex.flatInteractiveSections
+      .filter(s => rootSectionFor(s.name, schema) === rootName)
+      .some(s => (completion[s.name]?.visible ?? 1) > 0)
+  }
+
+  const prevRootSection = rootSections.slice(0, activeRootIdx).reverse().find(s => rootHasVisible(s.name))
+  const nextRootSection = rootSections.slice(activeRootIdx + 1).find(s => rootHasVisible(s.name))
+
+  // Find the first interactive leaf within a root section for nav highlighting on prev/next.
+  function firstLeafOf(rootName: string): string {
+    const leaf = sectionIndex.flatInteractiveSections.find(
+      s => rootSectionFor(s.name, schema) === rootName,
+    )
+    return leaf?.name ?? rootName
+  }
+
+  const activeSectionLabel = rootSections[activeRootIdx]?.label
+  const activeSectionTooltip = rootSections[activeRootIdx]?.tooltip
+
+  const totalRequired = Object.values(completion).reduce((s, c) => s + c.required, 0)
+  const totalFilled = Object.values(completion).reduce((s, c) => s + c.filled, 0)
 
   async function handleExport() {
     setIsExporting(true)
@@ -193,12 +247,8 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
       setUserValues(prev => ({ ...prev, ...imported }))
     }
     reader.readAsText(file)
-    // Reset so the same file can be re-imported
     e.target.value = ''
   }
-
-  const totalRequired = Object.values(completion).reduce((s, c) => s + c.required, 0)
-  const totalFilled = Object.values(completion).reduce((s, c) => s + c.filled, 0)
 
   return (
     <div className="flex flex-col h-full">
@@ -263,11 +313,11 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
 
       {/* Body */}
       {sectionIndex.flatInteractiveSections.length === 0 ? (
-        // No section tree — fall back to flat scroll
+        // No section tree — flat scroll
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <SectionView
             sectionName="Form"
-            questions={schema.questions}
+            blocks={sectionBlocks}
             states={augmentedStates}
             values={userValues}
             computed={computed}
@@ -282,8 +332,8 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
           <div className="w-56 flex-shrink-0 overflow-y-auto border-r border-gray-100 px-2 py-4 bg-white">
             <SectionNav
               sections={sectionIndex.interactiveSections}
-              active={activeSection}
-              onSelect={setActiveSection}
+              active={scrollTarget}
+              onSelect={handleNavSelect}
               completion={completion}
             />
           </div>
@@ -293,17 +343,25 @@ export default function FormRenderer({ schema, initialValues, pdfData, password,
             <SectionView
               sectionName={activeSection}
               sectionLabel={activeSectionLabel}
-              sectionContent={sectionContent}
-              questions={sectionQuestions}
+              sectionTooltip={activeSectionTooltip}
+              blocks={sectionBlocks}
               states={augmentedStates}
               values={userValues}
               computed={computed}
               onChange={handleChange}
               onFileChange={handleFileChange}
-              onPrev={prevSection ? () => setActiveSection(prevSection.name) : undefined}
-              onNext={nextSection ? () => setActiveSection(nextSection.name) : undefined}
-              prevLabel={prevSection ? (prevSection.label || prevSection.name) : undefined}
-              nextLabel={nextSection ? (nextSection.label || nextSection.name) : undefined}
+              onPrev={prevRootSection ? () => {
+                const leaf = firstLeafOf(prevRootSection.name)
+                setScrollTarget(leaf)
+                setActiveSection(prevRootSection.name)
+              } : undefined}
+              onNext={nextRootSection ? () => {
+                const leaf = firstLeafOf(nextRootSection.name)
+                setScrollTarget(leaf)
+                setActiveSection(nextRootSection.name)
+              } : undefined}
+              prevLabel={prevRootSection ? (prevRootSection.label || prevRootSection.name) : undefined}
+              nextLabel={nextRootSection ? (nextRootSection.label || nextRootSection.name) : undefined}
               duplicateLabels={sectionIndex.duplicateLabels}
             />
           </div>

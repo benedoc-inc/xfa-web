@@ -1,6 +1,6 @@
 import type { FormSection } from '../types/schema'
 import type { SectionCompletion } from '../utils/sectionIndex'
-import { formatFieldName } from '../utils/formatFieldName'
+import { resolveSectionLabel } from '../utils/sectionIndex'
 
 export type { SectionCompletion }
 
@@ -28,8 +28,8 @@ function hasInteractiveDescendant(sec: FormSection, completion: Record<string, S
   return (sec.children ?? []).some(c => hasInteractiveDescendant(c, completion))
 }
 
-function sectionLabel(section: FormSection): string {
-  return section.label || formatFieldName(section.name)
+function sectionDisplayLabel(section: FormSection): string {
+  return resolveSectionLabel(section.name, section.label)
 }
 
 function SectionItem({
@@ -64,6 +64,7 @@ function SectionItem({
         <button
           onClick={() => onSelect(section.name)}
           style={{ paddingLeft: pl }}
+          title={section.tooltip}
           className={[
             'flex items-center gap-2 text-left py-1.5 pr-2 rounded-md transition-colors w-full',
             depth === 0 ? 'text-sm' : 'text-xs',
@@ -73,7 +74,7 @@ function SectionItem({
           ].join(' ')}
         >
           <CompletionDot {...comp} />
-          <span className="truncate">{sectionLabel(section)}</span>
+          <span className="truncate">{sectionDisplayLabel(section)}</span>
         </button>
       ) : (
         // Non-interactive section header — shown only when it has visible interactive children
@@ -82,7 +83,7 @@ function SectionItem({
             style={{ paddingLeft: pl }}
             className="flex items-center gap-2 py-1 pr-2 text-xs font-semibold text-gray-400 uppercase tracking-wide select-none"
           >
-            {sectionLabel(section)}
+            {sectionDisplayLabel(section)}
           </div>
         )
       )}

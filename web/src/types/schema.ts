@@ -9,6 +9,7 @@ export interface FormSection {
   name: string
   path: string
   label?: string     // human-readable label from XFA subform caption; empty when not specified
+  tooltip?: string   // accessibility tooltip (e.g. IMDRF TOC chapter references)
   interactive: boolean
   layout?: string    // position | tb | lr-tb | row | table
   width?: string     // subform w attribute (mm/in/pt)

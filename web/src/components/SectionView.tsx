@@ -1,5 +1,6 @@
 import type { Question } from '../types/schema'
 import type { FieldState, FormValues } from '../engine/rules'
+import type { SectionBlock } from '../utils/sectionIndex'
 import { FieldRenderer } from './fields'
 import { formatFieldName } from '../utils/formatFieldName'
 
@@ -7,9 +8,9 @@ const INSTRUCTION_LABEL_THRESHOLD = 300
 
 interface Props {
   sectionName: string
-  sectionLabel?: string      // human-readable label; falls back to formatFieldName(sectionName)
-  sectionContent?: string[]  // static header/instruction text for this section
-  questions: Question[]
+  sectionLabel?: string
+  sectionTooltip?: string
+  blocks: SectionBlock[]
   states: Record<string, FieldState>
   values: FormValues
   computed: FormValues
@@ -59,8 +60,8 @@ function validateField(q: Question, value: string): string | null {
 export default function SectionView({
   sectionName,
   sectionLabel,
-  sectionContent,
-  questions,
+  sectionTooltip,
+  blocks,
   states,
   values,
   computed,
@@ -74,77 +75,99 @@ export default function SectionView({
 }: Props) {
   const effectiveValues = { ...values, ...computed }
 
-  const visible = questions.filter(q => !(states[q.id]?.hidden))
+  const allQuestions = blocks.flatMap(b => b.questions)
+  const allVisible = allQuestions.filter(q => !(states[q.id]?.hidden))
+  const interactiveCount = allVisible.filter(
+    q => q.type !== 'display' && q.type !== 'image' && q.type !== 'separator' && q.type !== 'button' && q.type !== 'file',
+  ).length
 
-  const interactiveCount = visible.filter(q => q.type !== 'display' && q.type !== 'image' && q.type !== 'separator' && q.type !== 'button' && q.type !== 'file').length
+  function renderQuestion(q: Question, parentSectionName: string) {
+    const state = states[q.id] ?? { hidden: false, disabled: false, computed: false }
+    const val = effectiveValues[q.id] ?? ''
+
+    if (q.type === 'display' || q.type === 'image') {
+      if (q.type === 'image') {
+        return (
+          <FieldRenderer
+            key={q.id}
+            question={q}
+            value={val}
+            onChange={v => onChange(q.id, v)}
+            disabled={true}
+            errors={[]}
+          />
+        )
+      }
+      return <DisplayBlock key={q.id} label={(q.label ?? '').replace(/[\u2028\u2029]/g, '\n')} />
+    }
+
+    if (q.type === 'button') return null
+
+    const isInstruction = (q.label?.length ?? 0) > INSTRUCTION_LABEL_THRESHOLD
+    const rawLabel = isInstruction
+      ? formatFieldName(q.name)
+      : (duplicateLabels?.has(q.label ?? '') && q.label)
+        ? `${formatFieldName(parentSectionName)} · ${q.label}`
+        : q.label
+    const displayLabel = rawLabel?.replace(/[\u2028\u2029]/g, '\n')
+
+    const validation = validateField(q, val)
+    return (
+      <div key={q.id}>
+        {isInstruction && <DisplayBlock label={q.label ?? ''} />}
+        <FieldRenderer
+          question={{ ...q, label: displayLabel }}
+          value={val}
+          onChange={v => onChange(q.id, v)}
+          onFileChange={f => onFileChange?.(q.id, f)}
+          disabled={state.disabled || state.computed}
+          errors={validation ? [validation] : []}
+        />
+        {state.computed && (
+          <p className="mt-1 text-xs text-gray-400">Calculated automatically</p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6 min-h-0">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">{sectionLabel || formatFieldName(sectionName)}</h2>
+        <h2 title={sectionTooltip} className="text-lg font-semibold text-gray-900 cursor-default">{sectionLabel || formatFieldName(sectionName)}</h2>
+        {sectionTooltip && <p className="text-xs text-gray-400 mt-0.5">{sectionTooltip}</p>}
         <p className="text-xs text-gray-400 mt-0.5">{interactiveCount} input{interactiveCount !== 1 ? 's' : ''} in this section</p>
-        {sectionContent && sectionContent.length > 0 && (
-          <div className="mt-2 space-y-1">
-            {sectionContent.map((line, i) => (
-              <p key={i} className="text-xs text-gray-500">{line}</p>
-            ))}
-          </div>
-        )}
       </div>
 
-      {visible.length === 0 && (
+      {allVisible.length === 0 && (
         <p className="text-sm text-gray-400 py-8 text-center">No visible fields in this section.</p>
       )}
 
       <div className="space-y-5">
-        {visible.map(q => {
-          const state = states[q.id] ?? { hidden: false, disabled: false, computed: false }
-          const val = effectiveValues[q.id] ?? ''
+        {blocks.map(block => {
+          const blockVisible = block.questions.filter(q => !(states[q.id]?.hidden))
+          const hasContent = blockVisible.length > 0 || block.content.length > 0
+          if (!hasContent && block.depth > 0) return null
 
-          if (q.type === 'display' || q.type === 'image') {
-            if (q.type === 'image') {
-              return (
-                <FieldRenderer
-                  key={q.id}
-                  question={q}
-                  value={val}
-                  onChange={v => onChange(q.id, v)}
-                  disabled={true}
-                  errors={[]}
-                />
-              )
-            }
-            return <DisplayBlock key={q.id} label={(q.label ?? '').replace(/[\u2028\u2029]/g, '\n')} />
-          }
-
-          if (q.type === 'button') return null
-
-          // Long labels are instruction text, not field labels.
-          const isInstruction = (q.label?.length ?? 0) > INSTRUCTION_LABEL_THRESHOLD
-          const rawLabel = isInstruction
-            ? formatFieldName(q.name)
-            : (duplicateLabels?.has(q.label ?? '') && q.label)
-              ? `${formatFieldName(sectionName)} · ${q.label}`
-              : q.label
-          // U+2028 (line separator) and U+2029 (paragraph separator) appear in
-          // multilingual XFA labels; normalize them to newlines for display.
-          const displayLabel = rawLabel?.replace(/[\u2028\u2029]/g, '\n')
-
-          const validation = validateField(q, val)
           return (
-            <div key={q.id}>
-              {isInstruction && <DisplayBlock label={q.label ?? ''} />}
-              <FieldRenderer
-                question={{ ...q, label: displayLabel }}
-                value={val}
-                onChange={v => onChange(q.id, v)}
-                onFileChange={f => onFileChange?.(q.id, f)}
-                disabled={state.disabled || state.computed}
-                errors={validation ? [validation] : []}
-              />
-              {state.computed && (
-                <p className="mt-1 text-xs text-gray-400">Calculated automatically</p>
+            <div key={block.sectionName} id={`section-${block.sectionName}`} className={block.depth > 0 ? 'space-y-5' : undefined}>
+              {block.depth === 1 && (
+                <div className="pt-4 border-t border-gray-100">
+                  <h3 title={block.sectionTooltip} className="text-sm font-semibold text-gray-700 cursor-default">{block.sectionLabel}</h3>
+                  {block.sectionTooltip && <p className="text-xs text-gray-400 mt-0.5">{block.sectionTooltip}</p>}
+                </div>
               )}
+              {block.depth >= 2 && (
+                <div className="pt-2">
+                  <h4 title={block.sectionTooltip} className="text-xs font-medium text-gray-500 uppercase tracking-wide cursor-default">{block.sectionLabel}</h4>
+                  {block.sectionTooltip && <p className="text-xs text-gray-400 mt-0.5">{block.sectionTooltip}</p>}
+                </div>
+              )}
+              {block.content.map((line, i) => (
+                <p key={i} className="text-xs text-gray-500">{line}</p>
+              ))}
+              <div className="space-y-5">
+                {blockVisible.map(q => renderQuestion(q, block.sectionName))}
+              </div>
             </div>
           )
         })}

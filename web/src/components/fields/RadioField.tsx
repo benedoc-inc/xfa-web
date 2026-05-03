@@ -6,7 +6,7 @@ export default function RadioField({ question, value, onChange, disabled, errors
   return (
     <div>
       <fieldset>
-        <legend className="block text-sm font-medium text-gray-700 mb-2">
+        <legend className="block text-sm font-medium text-gray-700 mb-2 whitespace-pre-line">
           {question.label || formatFieldName(question.name)}
           {question.required && <span className="text-red-500 ml-1">*</span>}
         </legend>

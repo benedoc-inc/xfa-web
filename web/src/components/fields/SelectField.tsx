@@ -20,7 +20,7 @@ export default function SelectField({ question, value, onChange, disabled, error
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-700 mb-1 whitespace-pre-line">
         {question.label || formatFieldName(question.name)}
         {question.required && <span className="text-red-500 ml-1">*</span>}
       </label>

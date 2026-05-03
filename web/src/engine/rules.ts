@@ -74,7 +74,16 @@ function resolveValue(path: string, values: FormValues, nameToId: Record<string,
   if (name in values) return values[name]
   const id = nameToId[name]
   if (id && id in values) return values[id]
-  // Name not found — return null so callers know it's unresolvable.
+  // XFA exclGroup sub-option paths: "GroupName.OptionField" where OptionField is a child
+  // checkbox that has no independent values entry. Fall back to the parent group's value.
+  // Correct because exclGroup.Option.rawValue == V iff exclGroup.rawValue == V.
+  const parentEnd = path.lastIndexOf('.')
+  if (parentEnd > 0) {
+    const parentName = lastPart(path.slice(0, parentEnd))
+    if (parentName in values) return values[parentName]
+    const parentId = nameToId[parentName]
+    if (parentId && parentId in values) return values[parentId]
+  }
   return null
 }
 

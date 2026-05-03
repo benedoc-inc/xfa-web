@@ -35,7 +35,7 @@ function DisplayBlock({ label }: { label: string }) {
     )
   }
   return (
-    <div className="bg-amber-50 border-l-4 border-amber-300 px-4 py-3 rounded-r text-sm text-gray-700">
+    <div className="bg-amber-50 border-l-4 border-amber-300 px-4 py-3 rounded-r text-sm text-gray-700 whitespace-pre-line">
       {label}
     </div>
   )
@@ -112,18 +112,21 @@ export default function SectionView({
                 />
               )
             }
-            return <DisplayBlock key={q.id} label={q.label ?? ''} />
+            return <DisplayBlock key={q.id} label={(q.label ?? '').replace(/[\u2028\u2029]/g, '\n')} />
           }
 
           if (q.type === 'button') return null
 
           // Long labels are instruction text, not field labels.
           const isInstruction = (q.label?.length ?? 0) > INSTRUCTION_LABEL_THRESHOLD
-          const displayLabel = isInstruction
+          const rawLabel = isInstruction
             ? formatFieldName(q.name)
             : (duplicateLabels?.has(q.label ?? '') && q.label)
               ? `${formatFieldName(sectionName)} · ${q.label}`
               : q.label
+          // U+2028 (line separator) and U+2029 (paragraph separator) appear in
+          // multilingual XFA labels; normalize them to newlines for display.
+          const displayLabel = rawLabel?.replace(/[\u2028\u2029]/g, '\n')
 
           const validation = validateField(q, val)
           return (

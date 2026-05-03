@@ -173,7 +173,15 @@ export function buildSectionBlocks(rootSectionName: string, schema: FormSchema):
   const blocks: SectionBlock[] = []
 
   function collect(sec: FormSection, depth: number) {
+    // sec.questions includes all descendant question IDs (from the Go subtree walk).
+    // Subtract child question IDs (which already include their own descendants) to
+    // get only the questions directly owned by this node.
+    const childQIds = new Set<string>()
+    for (const child of sec.children ?? []) {
+      for (const qId of child.questions ?? []) childQIds.add(qId)
+    }
     const questions = (sec.questions ?? [])
+      .filter(id => !childQIds.has(id))
       .map(id => byId.get(id))
       .filter((q): q is Question => q !== undefined)
     blocks.push({
